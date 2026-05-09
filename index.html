@@ -364,7 +364,17 @@
       letter-spacing: 1px;
       text-align: center;
       font-family: 'Orbitron', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
     }
+    .views-badge {
+      opacity: 0.55;
+      transition: opacity 0.2s ease;
+      filter: drop-shadow(0 0 6px rgba(167,139,250,0.4));
+    }
+    .views-badge:hover { opacity: 1; }
 
 
     /* ── BOTÃO DE MUTE ── */
@@ -465,7 +475,12 @@
 
     </div><!-- /links -->
 
-    <div class="footer">⭐ pk the goat · 2026</div>
+    <div class="footer">
+      <span>⭐ pk the goat · 2026</span>
+      <img class="views-badge"
+           src="https://visitor-badge.laobi.icu/badge?page_id=pkthegoat.site&left_text=visualizacoes&left_color=2a1a4a&right_color=a78bfa"
+           alt="visualizações" />
+    </div>
 
   </div>
 </main>
