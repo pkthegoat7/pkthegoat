@@ -71,6 +71,17 @@
       height: 110px;
       margin-bottom: 20px;
     }
+    .fire-canvas {
+      position: absolute;
+      width: 240px;
+      height: 240px;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 0;
+      filter: blur(0.6px);
+    }
     .avatar-ring::before {
       content: '';
       position: absolute;
@@ -115,6 +126,8 @@
       display: block;
       border: 3px solid #000008;
       background: #0f0f2e;
+      position: relative;
+      z-index: 2;
     }
 
     .avatar-placeholder {
@@ -162,12 +175,56 @@
       font-weight: 400;
       letter-spacing: 5px;
       text-align: center;
-      background: linear-gradient(135deg, #fff 0%, #a78bfa 50%, #60a5fa 100%);
+      background: linear-gradient(
+        110deg,
+        #ffffff 0%,
+        #d8c8ff 20%,
+        #a78bfa 40%,
+        #60a5fa 55%,
+        #a78bfa 70%,
+        #d8c8ff 85%,
+        #ffffff 100%
+      );
+      background-size: 250% 100%;
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
-      text-shadow: none;
+      color: transparent;
       margin-bottom: 8px;
+      position: relative;
+      animation:
+        nameShine 5s linear infinite,
+        nameFloat 4s ease-in-out infinite,
+        nameGlow 3s ease-in-out infinite;
+      filter: drop-shadow(0 0 12px rgba(167,139,250,0.35));
+      cursor: default;
+      transition: transform 0.3s ease;
+    }
+
+    .name:hover {
+      animation-duration: 1.6s, 4s, 3s;
+      transform: scale(1.04);
+    }
+
+    @keyframes nameShine {
+      0%   { background-position: 200% 50%; }
+      100% { background-position: -50% 50%; }
+    }
+
+    @keyframes nameFloat {
+      0%, 100% { transform: translateY(0); }
+      50%      { transform: translateY(-4px); }
+    }
+
+    @keyframes nameGlow {
+      0%, 100% {
+        filter: drop-shadow(0 0 10px rgba(167,139,250,0.30))
+                drop-shadow(0 0 22px rgba(96,165,250,0.15));
+      }
+      50% {
+        filter: drop-shadow(0 0 18px rgba(167,139,250,0.55))
+                drop-shadow(0 0 38px rgba(96,165,250,0.30));
+      }
     }
 
     .bio {
@@ -367,6 +424,7 @@
 
     <!-- Avatar -->
     <div class="avatar-ring">
+      <canvas class="fire-canvas" id="fireCanvas"></canvas>
       <img class="avatar-img" src="pk.jpeg" alt="pk the goat" />
     </div>
 
@@ -729,6 +787,167 @@
   }
 
   requestAnimationFrame(draw);
+
+  // ── CHAMAS EM VOLTA DO AVATAR ────────────────────────────
+  (() => {
+    const fc  = document.getElementById('fireCanvas');
+    const fx  = fc.getContext('2d');
+    const FW  = 240, FH = 240;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    fc.width  = FW * dpr;
+    fc.height = FH * dpr;
+    fx.scale(dpr, dpr);
+
+    const cx    = FW / 2;
+    const cy    = FH / 2;
+    const ringR = 60;          // base das chamas (logo fora da foto)
+
+    // Línguas de fogo distribuídas ao redor do círculo
+    const N_TONGUES = 30;
+    const tongues = Array.from({ length: N_TONGUES }, (_, i) => ({
+      angle:    (i / N_TONGUES) * Math.PI * 2 + Math.random() * 0.05,
+      baseLen:  22 + Math.random() * 16,
+      baseW:    9 + Math.random() * 4,
+      flickerP: Math.random() * Math.PI * 2,
+      flickerF: 2.5 + Math.random() * 3.5,
+      swayP:    Math.random() * Math.PI * 2,
+      swayF:    0.7 + Math.random() * 1.6,
+      seed:     Math.random() * 1000,
+    }));
+
+    // Faíscas que sobem das chamas
+    const sparks = [];
+
+    function drawTongue(t, time) {
+      // flicker: combina duas senoides + ruído rápido
+      const flick = 0.65
+                  + Math.sin(time * t.flickerF + t.flickerP) * 0.22
+                  + Math.sin(time * t.flickerF * 2.3 + t.flickerP * 1.7) * 0.12
+                  + (Math.random() - 0.5) * 0.06;
+      const len  = t.baseLen * Math.max(0.35, flick);
+      const sway = Math.sin(time * t.swayF + t.swayP) * 0.18;
+      const ang  = t.angle + sway;
+
+      const outX  = Math.cos(ang),  outY  = Math.sin(ang);
+      const perpX = -outY,          perpY = outX;
+      const baseX = cx + outX * ringR;
+      const baseY = cy + outY * ringR;
+      const tipX  = baseX + outX * len + perpX * Math.sin(time * 6 + t.seed) * 2.2;
+      const tipY  = baseY + outY * len + perpY * Math.cos(time * 5 + t.seed) * 2.2;
+
+      // Constrói o contorno da chama (base larga, ponta fina, bordas onduladas)
+      const N = 6;
+      const leftPts  = [];
+      const rightPts = [];
+      for (let i = 0; i <= N; i++) {
+        const u = i / N;
+        const w = t.baseW * (1 - u) * (1 - u * 0.3) * 0.5;
+        const wave = Math.sin(time * 7 + u * 9 + t.seed)        * 1.6 * (1 - u);
+        const wavR = Math.sin(time * 7 + u * 9 + t.seed + 1.2)  * 1.6 * (1 - u);
+        const cxp  = baseX + (tipX - baseX) * u;
+        const cyp  = baseY + (tipY - baseY) * u;
+        leftPts .push([cxp + perpX * (-w + wave), cyp + perpY * (-w + wave)]);
+        rightPts.push([cxp + perpX * ( w + wavR), cyp + perpY * ( w + wavR)]);
+      }
+
+      fx.beginPath();
+      fx.moveTo(leftPts[0][0], leftPts[0][1]);
+      for (const [x, y] of leftPts)        fx.lineTo(x, y);
+      for (let i = rightPts.length - 1; i >= 0; i--) fx.lineTo(rightPts[i][0], rightPts[i][1]);
+      fx.closePath();
+
+      // Gradiente: branco-quente na base → lilás → roxo profundo → transparente
+      const g = fx.createLinearGradient(baseX, baseY, tipX, tipY);
+      g.addColorStop(0,    'rgba(255,245,255,0.95)');
+      g.addColorStop(0.18, 'rgba(225,195,255,0.85)');
+      g.addColorStop(0.45, 'rgba(170,120,250,0.55)');
+      g.addColorStop(0.78, 'rgba(110, 50,210,0.22)');
+      g.addColorStop(1,    'rgba( 60, 20,140,0)');
+      fx.fillStyle = g;
+      fx.fill();
+
+      // Núcleo interno mais brilhante (camada quente)
+      fx.beginPath();
+      fx.moveTo(baseX, baseY);
+      const innerN = 4;
+      for (let i = 1; i <= innerN; i++) {
+        const u = i / innerN;
+        const ix = baseX + (tipX - baseX) * u * 0.7;
+        const iy = baseY + (tipY - baseY) * u * 0.7;
+        const w  = t.baseW * (1 - u) * 0.22;
+        fx.lineTo(ix + perpX * -w, iy + perpY * -w);
+      }
+      for (let i = innerN; i >= 1; i--) {
+        const u = i / innerN;
+        const ix = baseX + (tipX - baseX) * u * 0.7;
+        const iy = baseY + (tipY - baseY) * u * 0.7;
+        const w  = t.baseW * (1 - u) * 0.22;
+        fx.lineTo(ix + perpX * w, iy + perpY * w);
+      }
+      fx.closePath();
+      const gi = fx.createLinearGradient(baseX, baseY, tipX, tipY);
+      gi.addColorStop(0,   'rgba(255,255,255,0.9)');
+      gi.addColorStop(0.5, 'rgba(240,220,255,0.5)');
+      gi.addColorStop(1,   'rgba(200,160,255,0)');
+      fx.fillStyle = gi;
+      fx.fill();
+
+      // Ocasionalmente solta uma faísca da ponta
+      if (Math.random() < 0.04) {
+        sparks.push({
+          x: tipX, y: tipY,
+          vx: outX * (0.6 + Math.random() * 0.8) + (Math.random() - 0.5) * 0.4,
+          vy: outY * (0.6 + Math.random() * 0.8) + (Math.random() - 0.5) * 0.4,
+          life: 1,
+          decay: 0.025 + Math.random() * 0.025,
+          size: 0.8 + Math.random() * 1.4,
+        });
+      }
+    }
+
+    function tick(now) {
+      const time = now * 0.001;
+      fx.clearRect(0, 0, FW, FH);
+
+      // ── Halo / brasa pulsante na borda ──
+      fx.globalCompositeOperation = 'lighter';
+      const pulse = 0.78 + Math.sin(time * 2.4) * 0.22;
+      const halo = fx.createRadialGradient(cx, cy, ringR - 6, cx, cy, ringR + 26);
+      halo.addColorStop(0,    'rgba(0,0,0,0)');
+      halo.addColorStop(0.30, `rgba(200,150,255,${0.40 * pulse})`);
+      halo.addColorStop(0.60, `rgba(150, 80,235,${0.55 * pulse})`);
+      halo.addColorStop(1,    'rgba(0,0,0,0)');
+      fx.beginPath();
+      fx.arc(cx, cy, ringR + 26, 0, Math.PI * 2);
+      fx.fillStyle = halo;
+      fx.fill();
+
+      // ── Línguas de chama ──
+      for (const t of tongues) drawTongue(t, time);
+
+      // ── Faíscas ──
+      for (let i = sparks.length - 1; i >= 0; i--) {
+        const s = sparks[i];
+        s.x += s.vx; s.y += s.vy;
+        s.vx *= 0.985; s.vy *= 0.985;
+        s.life -= s.decay;
+        if (s.life <= 0) { sparks.splice(i, 1); continue; }
+        const al = s.life;
+        const sg = fx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.size * 4);
+        sg.addColorStop(0,   `rgba(255,240,255,${al})`);
+        sg.addColorStop(0.4, `rgba(200,150,255,${al * 0.5})`);
+        sg.addColorStop(1,   'transparent');
+        fx.fillStyle = sg;
+        fx.beginPath();
+        fx.arc(s.x, s.y, s.size * 4, 0, Math.PI * 2);
+        fx.fill();
+      }
+
+      fx.globalCompositeOperation = 'source-over';
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  })();
 
   // ── RIPPLE NOS BOTÕES ────────────────────────────────────
   document.querySelectorAll('.link-btn').forEach(btn => {
