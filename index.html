@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
@@ -310,6 +310,33 @@
     }
 
 
+    /* ── BOTÃO DE MUTE ── */
+    .audio-toggle {
+      position: fixed;
+      top: 18px;
+      right: 18px;
+      z-index: 100;
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: 1px solid rgba(167,139,250,0.35);
+      background: rgba(20,10,40,0.55);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      color: #d8c8ff;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .audio-toggle:hover {
+      transform: scale(1.08);
+      border-color: rgba(200,170,255,0.7);
+      box-shadow: 0 0 18px rgba(167,139,250,0.35);
+    }
+    .audio-toggle svg { width: 18px; height: 18px; }
+
     /* ── RESPONSIVO ── */
     @media (max-width: 520px) {
       .name { font-size: 1.3rem; }
@@ -321,6 +348,19 @@
 
 <!-- Canvas principal -->
 <canvas id="starfield"></canvas>
+
+<!-- Áudio de fundo -->
+<audio id="bgAudio" src="7.mp3" loop preload="auto"></audio>
+
+<!-- Botão de mute -->
+<button id="audioToggle" class="audio-toggle" aria-label="Mute/Unmute">
+  <svg id="iconOn" viewBox="0 0 24 24" fill="currentColor" style="display:none">
+    <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4.03v8.06A4.5 4.5 0 0 0 16.5 12zM14 3.23v2.06a7 7 0 0 1 0 13.42v2.06a9 9 0 0 0 0-17.54z"/>
+  </svg>
+  <svg id="iconOff" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M16.5 12A4.5 4.5 0 0 0 14 7.97v2.21l2.45 2.45c.03-.21.05-.42.05-.63zM19 12c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.96 8.96 0 0 0 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.17v2.06a8.99 8.99 0 0 0 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+  </svg>
+</button>
 
 <main>
   <div class="card">
@@ -380,38 +420,98 @@
 
   // Declarações ANTES de qualquer chamada
   let embers    = [];
+  let stars     = [];
   let bhRot     = 0;
 
-  const N_FIL   = 320;
-  const N_PAR   = 90;
-  const filaments = Array.from({ length: N_FIL }, () => ({
-    angle:  Math.random() * Math.PI * 2,
-    rFrac:  Math.pow(Math.random(), 0.65),
-    arcLen: 0.03 + Math.pow(Math.random(), 1.4) * 0.60,
-    bright: 0.08 + Math.pow(Math.random(), 0.75) * 0.92,
-    width:  0.3  + Math.random() * 2.4,
-    speed:  0.45 + Math.random() * 1.10,
+  // Filamentos em três camadas para dar profundidade Kepleriana
+  const N_FIL_INNER = 280;  // disco interno — fino, rápido, branco-quente
+  const N_FIL_MID   = 220;  // disco médio — âmbar dourado
+  const N_FIL_OUTER = 180;  // disco externo — laranja escuro, lento
+  const N_TENDRIL   = 26;   // longas tiras espirais (acreção)
+  const N_PAR       = 140;  // partículas brilhantes orbitando
+
+  function makeFilament(layer) {
+    const profiles = {
+      inner: { rMin: 1.05, rMax: 1.45, arcMin: 0.08, arcMax: 0.55, wMin: 0.25, wMax: 1.6,
+               hueMin: 270, hueMax: 290, sat: 95, lightMin: 72, lightMax: 92, bright: 0.55 },
+      mid:   { rMin: 1.40, rMax: 1.95, arcMin: 0.12, arcMax: 0.85, wMin: 0.4,  wMax: 2.4,
+               hueMin: 260, hueMax: 280, sat: 90, lightMin: 52, lightMax: 75, bright: 0.45 },
+      outer: { rMin: 1.85, rMax: 2.55, arcMin: 0.18, arcMax: 1.20, wMin: 0.6,  wMax: 3.2,
+               hueMin: 250, hueMax: 275, sat: 82, lightMin: 32, lightMax: 55, bright: 0.32 },
+    };
+    const p = profiles[layer];
+    return {
+      angle:  Math.random() * Math.PI * 2,
+      rFrac:  Math.random(),
+      rMin:   p.rMin, rMax: p.rMax,
+      arcLen: p.arcMin + Math.pow(Math.random(), 1.5) * (p.arcMax - p.arcMin),
+      bright: (0.15 + Math.pow(Math.random(), 0.7) * 0.85) * p.bright,
+      width:  p.wMin + Math.random() * (p.wMax - p.wMin),
+      speed:  0.5 + Math.random() * 0.9,
+      hue:    p.hueMin + Math.random() * (p.hueMax - p.hueMin),
+      sat:    p.sat,
+      light:  p.lightMin + Math.random() * (p.lightMax - p.lightMin),
+      wob:    Math.random() * Math.PI * 2,
+      wobSpd: 0.3 + Math.random() * 0.7,
+    };
+  }
+
+  const filaments = [
+    ...Array.from({ length: N_FIL_INNER }, () => makeFilament('inner')),
+    ...Array.from({ length: N_FIL_MID   }, () => makeFilament('mid')),
+    ...Array.from({ length: N_FIL_OUTER }, () => makeFilament('outer')),
+  ];
+
+  // Tendrils — longas espirais que parecem matéria sendo sugada
+  const tendrils = Array.from({ length: N_TENDRIL }, () => ({
+    angle: Math.random() * Math.PI * 2,
+    rFrac: 1.2 + Math.random() * 1.4,   // começam fora, espiralam para dentro
+    arcLen: 0.4 + Math.random() * 1.1,
+    bright: 0.18 + Math.random() * 0.35,
+    width: 1.2 + Math.random() * 2.0,
+    speed: 0.4 + Math.random() * 0.6,
+    life:  Math.random(),
+    decay: 0.0008 + Math.random() * 0.0014,
   }));
+
+  // Partículas — brasas em órbita decadente (espiralam para dentro)
   const particles = Array.from({ length: N_PAR }, () => ({
     angle: Math.random() * Math.PI * 2,
-    dist:  1.10 + Math.random() * 1.30,
-    spd:   0.0008 + Math.random() * 0.0025,
-    r:     0.6 + Math.random() * 1.8,
-    bright: 0.25 + Math.random() * 0.75,
+    dist:  1.05 + Math.random() * 1.55,
+    spd:   0.0010 + Math.random() * 0.0035,
+    drift: -0.00012 - Math.random() * 0.00038,  // movimento radial p/ dentro
+    r:     0.5 + Math.pow(Math.random(), 1.5) * 2.4,
+    bright: 0.35 + Math.random() * 0.65,
+    hue:   265 + Math.random() * 30,
+    twinkle: Math.random() * Math.PI * 2,
+    twinkleSpd: 0.6 + Math.random() * 1.6,
   }));
 
   function createEmbers() {
-    embers = Array.from({ length: 220 }, () => ({
-      x:  Math.random() * W,
-      y:  Math.random() * H,
-      r:  0.3 + Math.pow(Math.random(), 1.8) * 2.8,
-      hue: 265 + Math.random() * 50,
-      sat: 60 + Math.random() * 40,
-      brightness: 0.15 + Math.random() * 0.85,
-      twinkle: Math.random() * Math.PI * 2,
-      twinkleSpd: 0.4 + Math.random() * 1.4,
-      dx: (Math.random() - 0.5) * 0.06,
-      dy: (Math.random() - 0.5) * 0.04,
+    embers = Array.from({ length: 260 }, () => {
+      const isWhite = Math.random() < 0.18;
+      return {
+        x:  Math.random() * W,
+        y:  Math.random() * H,
+        r:  0.25 + Math.pow(Math.random(), 2.2) * 2.6,
+        hue: isWhite ? (275 + Math.random() * 15) : (260 + Math.random() * 35),
+        sat: isWhite ? (15 + Math.random() * 25) : (75 + Math.random() * 25),
+        light: isWhite ? (85 + Math.random() * 10) : (55 + Math.random() * 25),
+        brightness: 0.15 + Math.pow(Math.random(), 1.4) * 0.85,
+        twinkle: Math.random() * Math.PI * 2,
+        twinkleSpd: 0.3 + Math.random() * 1.3,
+        dx: (Math.random() - 0.5) * 0.05,
+        dy: (Math.random() - 0.5) * 0.035,
+      };
+    });
+    // Estrelas distantes (frias, brancas, longe do BH)
+    stars = Array.from({ length: 160 }, () => ({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      r: 0.2 + Math.pow(Math.random(), 3) * 1.4,
+      a: 0.2 + Math.random() * 0.7,
+      tw: Math.random() * Math.PI * 2,
+      tws: 0.2 + Math.random() * 0.8,
     }));
   }
 
@@ -423,266 +523,161 @@
   resize();
   window.addEventListener('resize', resize);
 
-  function resize() {
-    W = canvas.width  = window.innerWidth;
-    H = canvas.height = window.innerHeight;
-    createEmbers();
-  }
-  resize();
-  window.addEventListener('resize', resize);
 
-
-  // ── DRAW BLACK HOLE (estilo fundo.jpg — anel giratório de filamentos) ──
+  // ── DRAW BLACK HOLE — disco de acreção realista (face-on, estilo fundo.jpg) ──
   function drawBlackHole(now) {
     const bx = W * 0.50;
     const by = H * 0.50;
-    const R  = Math.min(W, H) * 0.215; // shadow radius
+    const R  = Math.min(W, H) * 0.205;     // raio da sombra (event horizon)
     const t  = now * 0.001;
-    const f1 = 1 + Math.sin(t * 0.9)        * 0.040;
-    const f2 = 1 + Math.sin(t * 2.6 + 1.2)  * 0.022;
-    const f3 = 1 + Math.sin(t * 7.3 + 2.5)  * 0.009;
-    const flicker = f1 * f2 * f3;
-    const ringInner = R * 1.05;
-    const ringOuter = R * 2.35;
-    const ringMid   = (ringInner + ringOuter) * 0.5;
-    bhRot += 0.00028;
 
-    // 1. Halo externo difuso
-    const halo = ctx.createRadialGradient(bx, by, R * 0.9, bx, by, ringOuter * 2.8);
-    halo.addColorStop(0,    'rgba(120,40,180,0.38)');
-    halo.addColorStop(0.20, 'rgba( 90,25,140,0.16)');
-    halo.addColorStop(0.50, 'rgba( 55,12, 90,0.06)');
-    halo.addColorStop(0.80, 'rgba( 30, 5, 55,0.02)');
+    // Cintilação multi-frequência (plasma orgânico)
+    const f1 = 1 + Math.sin(t * 0.7)        * 0.035;
+    const f2 = 1 + Math.sin(t * 2.3 + 1.2)  * 0.020;
+    const f3 = 1 + Math.sin(t * 6.8 + 2.5)  * 0.011;
+    const flicker = f1 * f2 * f3;
+
+    const ringInner = R * 1.04;
+    const ringOuter = R * 2.55;
+    bhRot += 0.00026;
+
+    // ── 1. Halo de poeira interestelar (purple dust glow) ─────────────────
+    const halo = ctx.createRadialGradient(bx, by, R * 0.8, bx, by, ringOuter * 3.2);
+    halo.addColorStop(0,    'rgba(70,30,110,0.34)');
+    halo.addColorStop(0.15, 'rgba(50,20, 90,0.18)');
+    halo.addColorStop(0.40, 'rgba(32,12, 60,0.07)');
+    halo.addColorStop(0.75, 'rgba(18, 6, 40,0.02)');
     halo.addColorStop(1,    'transparent');
-    ctx.beginPath(); ctx.arc(bx, by, ringOuter * 2.8, 0, Math.PI*2);
+    ctx.beginPath(); ctx.arc(bx, by, ringOuter * 3.2, 0, Math.PI*2);
     ctx.fillStyle = halo; ctx.fill();
 
-    // 2. Banda de brilho do anel
-    const band = ctx.createRadialGradient(bx, by, R * 0.95, bx, by, ringOuter * 1.25);
+    // ── 2. Brilho geral do disco (banda roxa difusa) ──────────────────────
+    ctx.globalCompositeOperation = 'lighter';
+    const band = ctx.createRadialGradient(bx, by, R * 0.95, bx, by, ringOuter * 1.15);
     band.addColorStop(0,    'rgba(0,0,0,0)');
-    band.addColorStop(0.30, `rgba(110,40,175,${0.28 * flicker})`);
-    band.addColorStop(0.52, `rgba(150,60,220,${0.48 * flicker})`);
-    band.addColorStop(0.68, `rgba(120,40,185,${0.30 * flicker})`);
-    band.addColorStop(0.85, 'rgba(70,20,110,0.10)');
+    band.addColorStop(0.10, `rgba(190,140,255,${0.18 * flicker})`);
+    band.addColorStop(0.32, `rgba(170,100,240,${0.32 * flicker})`);
+    band.addColorStop(0.55, `rgba(125, 60,200,${0.22 * flicker})`);
+    band.addColorStop(0.78, `rgba( 70, 25,130,${0.10})`);
     band.addColorStop(1,    'transparent');
-    ctx.beginPath(); ctx.arc(bx, by, ringOuter * 1.25, 0, Math.PI*2);
+    ctx.beginPath(); ctx.arc(bx, by, ringOuter * 1.15, 0, Math.PI*2);
     ctx.fillStyle = band; ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
 
-    // 3. Filamentos (textura fibrosa do anel — Kepleriano: interno mais rápido)
+    // ── 3. Tendrils — longas espirais sendo sugadas ───────────────────────
+    ctx.globalCompositeOperation = 'lighter';
+    for (const td of tendrils) {
+      td.life -= td.decay;
+      if (td.life <= 0) {
+        td.life = 1;
+        td.angle = Math.random() * Math.PI * 2;
+        td.rFrac = 1.4 + Math.random() * 1.3;
+      }
+      // espirala para dentro
+      const rFrac = ringInner + (ringOuter - ringInner) * td.rFrac * (0.3 + 0.7 * td.life);
+      const ang   = td.angle + bhRot * td.speed * 4.5 + (1 - td.life) * 1.4;
+      const fade  = Math.sin(td.life * Math.PI); // entra e sai
+      const al    = td.bright * fade * flicker;
+      // segmentado para parecer fibroso
+      const segs = 8;
+      for (let i = 0; i < segs; i++) {
+        const f0 = i / segs, f1s = (i + 1) / segs;
+        const a0 = ang + td.arcLen * f0;
+        const a1 = ang + td.arcLen * f1s;
+        const segAl = al * (1 - Math.abs(f0 - 0.5) * 1.2);
+        ctx.beginPath();
+        ctx.arc(bx, by, rFrac, a0, a1);
+        ctx.strokeStyle = `hsla(275, 85%, ${60 + (1 - rFrac/ringOuter) * 25}%, ${Math.max(0, segAl)})`;
+        ctx.lineWidth = td.width * (0.7 + fade * 0.3);
+        ctx.stroke();
+      }
+    }
+    ctx.globalCompositeOperation = 'source-over';
+
+    // ── 4. Filamentos — textura fibrosa em 3 camadas Kepleriana ───────────
+    ctx.globalCompositeOperation = 'lighter';
     for (const f of filaments) {
-      const kep   = 1 / Math.sqrt(0.3 + f.rFrac);
-      const angle = f.angle + bhRot * f.speed * kep * 3.0;
-      const r     = ringInner + f.rFrac * (ringOuter - ringInner);
-      const inner = 1 - f.rFrac;
-      const cR    = Math.round( 90 + inner * 120);
-      const cG    = Math.round( 20 + inner *  40);
-      const cB    = Math.round(160 + inner *  90);
-      const alpha = f.bright * (0.22 + inner * 0.55) * flicker;
+      const r     = R * (f.rMin + f.rFrac * (f.rMax - f.rMin));
+      // velocidade Kepleriana: interno gira mais rápido (∝ r^-1.5)
+      const kep   = Math.pow(R / r, 1.5);
+      const wobble = Math.sin(t * f.wobSpd + f.wob) * 0.04;
+      const angle = f.angle + bhRot * f.speed * kep * 4.2 + wobble;
+      // brilho mais alto perto da sombra (mais quente)
+      const heat  = Math.max(0, 1 - (r - ringInner) / (ringOuter - ringInner));
+      const alpha = f.bright * (0.35 + heat * 0.65) * flicker;
+      // tons mais quentes (claros) perto da sombra
+      const light = f.light + heat * 12;
       ctx.beginPath();
       ctx.arc(bx, by, r, angle, angle + f.arcLen);
-      ctx.strokeStyle = `rgba(${cR},${cG},${cB},${alpha})`;
+      ctx.strokeStyle = `hsla(${f.hue}, ${f.sat}%, ${light}%, ${alpha})`;
       ctx.lineWidth   = f.width;
+      ctx.lineCap     = 'round';
       ctx.stroke();
     }
+    ctx.globalCompositeOperation = 'source-over';
 
-    // 4. Sombra — círculo negro
+    // ── 5. Sombra do buraco negro (event horizon) ─────────────────────────
+    // Levemente azulada no centro (luz de fundo distorcida atrás), como em fundo.jpg
+    const shadow = ctx.createRadialGradient(bx, by, 0, bx, by, R);
+    shadow.addColorStop(0,    '#08080f');
+    shadow.addColorStop(0.55, '#040408');
+    shadow.addColorStop(0.92, '#000000');
+    shadow.addColorStop(1,    '#000000');
     ctx.beginPath(); ctx.arc(bx, by, R, 0, Math.PI*2);
-    ctx.fillStyle = '#000'; ctx.fill();
+    ctx.fillStyle = shadow; ctx.fill();
 
-    // 5. Anel de fótons (borda luminosa ao redor da sombra)
-    const ph = ctx.createRadialGradient(bx, by, R * 0.93, bx, by, R * 1.14);
-    ph.addColorStop(0,   'rgba(0,0,0,0)');
-    ph.addColorStop(0.38,`rgba(160,80,240,${0.52 * flicker})`);
-    ph.addColorStop(0.65,`rgba(200,130,255,${0.75 * flicker})`);
-    ph.addColorStop(0.85,`rgba(160,80,240,${0.40 * flicker})`);
-    ph.addColorStop(1,   'rgba(0,0,0,0)');
-    ctx.beginPath(); ctx.arc(bx, by, R * 1.14, 0, Math.PI*2);
+    // ── 6. Anel de fótons (borda nítida ao redor da sombra) ───────────────
+    ctx.globalCompositeOperation = 'lighter';
+    // anel principal — branco-lilás brilhante
+    const ph = ctx.createRadialGradient(bx, by, R * 0.985, bx, by, R * 1.10);
+    ph.addColorStop(0,    'rgba(0,0,0,0)');
+    ph.addColorStop(0.15, `rgba(220,200,255,${0.32 * flicker})`);
+    ph.addColorStop(0.42, `rgba(240,225,255,${0.95 * flicker})`);
+    ph.addColorStop(0.55, `rgba(210,170,255,${0.85 * flicker})`);
+    ph.addColorStop(0.80, `rgba(150, 80,230,${0.38 * flicker})`);
+    ph.addColorStop(1,    'rgba(0,0,0,0)');
+    ctx.beginPath(); ctx.arc(bx, by, R * 1.10, 0, Math.PI*2);
     ctx.fillStyle = ph; ctx.fill();
 
-    // 6. Partículas voando para fora do anel
+    // anel de fótons secundário (mais externo, sutil)
+    const ph2 = ctx.createRadialGradient(bx, by, R * 1.10, bx, by, R * 1.28);
+    ph2.addColorStop(0,    'rgba(0,0,0,0)');
+    ph2.addColorStop(0.45, `rgba(180,120,255,${0.30 * flicker})`);
+    ph2.addColorStop(1,    'rgba(0,0,0,0)');
+    ctx.beginPath(); ctx.arc(bx, by, R * 1.28, 0, Math.PI*2);
+    ctx.fillStyle = ph2; ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+
+    // ── 7. Partículas em órbita decadente (espiral) ───────────────────────
+    ctx.globalCompositeOperation = 'lighter';
     for (const p of particles) {
-      p.angle += p.spd;
-      const dist = ringInner + (ringOuter - ringInner) * p.dist;
+      p.angle += p.spd * Math.pow(2.0 / Math.max(p.dist, 0.5), 1.5); // Kepleriano
+      p.dist  += p.drift; // espirala para dentro
+      // re-emite quando atinge o anel de fótons
+      if (p.dist < 1.04) {
+        p.dist  = 1.7 + Math.random() * 1.0;
+        p.angle = Math.random() * Math.PI * 2;
+      }
+      p.twinkle += p.twinkleSpd * 0.016;
+      const dist = R * p.dist;
       const px   = bx + Math.cos(p.angle) * dist;
       const py   = by + Math.sin(p.angle) * dist;
+      const tw   = 0.55 + Math.sin(p.twinkle) * 0.45;
+      const al   = p.bright * tw * flicker;
       const pR   = p.r;
-      const al   = p.bright * flicker;
-      const pg   = ctx.createRadialGradient(px, py, 0, px, py, pR * 4);
-      pg.addColorStop(0,   `rgba(190,100,255,${al})`);
-      pg.addColorStop(0.35,`rgba(130,50,210,${al * 0.40})`);
-      pg.addColorStop(1,   'transparent');
-      ctx.beginPath(); ctx.arc(px, py, pR * 4, 0, Math.PI*2);
+      // glow
+      const pg   = ctx.createRadialGradient(px, py, 0, px, py, pR * 5);
+      pg.addColorStop(0,    `hsla(${p.hue}, 95%, 75%, ${al})`);
+      pg.addColorStop(0.30, `hsla(${p.hue}, 90%, 55%, ${al * 0.45})`);
+      pg.addColorStop(1,    'transparent');
+      ctx.beginPath(); ctx.arc(px, py, pR * 5, 0, Math.PI*2);
       ctx.fillStyle = pg; ctx.fill();
+      // núcleo brilhante
       ctx.beginPath(); ctx.arc(px, py, pR, 0, Math.PI*2);
-      ctx.fillStyle = `rgba(220,170,255,${al})`;
+      ctx.fillStyle = `hsla(${p.hue + 10}, 80%, 88%, ${al})`;
       ctx.fill();
     }
-
-    // 7. Brilho interno tênue (matéria caindo)
-    const inner = ctx.createRadialGradient(bx, by, 0, bx, by, R * 0.88);
-    inner.addColorStop(0,   `rgba(60,20,90,${0.18 * flicker})`);
-    inner.addColorStop(0.5, `rgba(30,8,50,${0.08})`);
-    inner.addColorStop(1,   'transparent');
-    ctx.beginPath(); ctx.arc(bx, by, R * 0.88, 0, Math.PI*2);
-    ctx.fillStyle = inner; ctx.fill();
-
-    // 8. Ponto central tênue (estrela de nêutrons / singularidade)
-    const dot = ctx.createRadialGradient(bx, by, 0, bx, by, R * 0.06);
-    dot.addColorStop(0,  `rgba(200,220,255,${0.25 * flicker})`);
-    dot.addColorStop(1,  'transparent');
-    ctx.beginPath(); ctx.arc(bx, by, R * 0.06, 0, Math.PI*2);
-    ctx.fillStyle = dot; ctx.fill();
-  }
-
-  function _unused_drawBlackHole(bh, now) {
-    if (!bh) return;
-    const sx = 0, sy = 0, scale = 1;
-    if (sx < -900 || sx > W+900 || sy < -900 || sy > H+900) return;
-
-    const R = bh.baseRadius * scale * 6.5;
-    if (R < 2) return;
-
-    bh.diskAngle += bh.diskSpin;
-    const t = now * 0.001;
-    // Plasma orgânico — múltiplas frequências sobrepostas
-    const flicker = (1 + Math.sin(t * 1.1 + bh.pulse)       * 0.040)
-                  * (1 + Math.sin(t * 3.9 + bh.pulse * 1.6) * 0.022)
-                  * (1 + Math.sin(t * 8.7 + bh.pulse * 2.9) * 0.010);
-
-    const shadow = R * 1.20;
-    const diskRx = R * 4.3;
-    const diskRy = diskRx * 0.068; // disco ultra-plano
-    const da     = bh.diskAngle;
-
-    // Gradiente com efeito Doppler:
-    // lado esquerdo (vindo em nossa direção) = 3× mais brilhante, laranja-branco
-    // lado direito  (se afastando)           = mais fraco, laranja-vermelho
-    function dg(rx, peak, dimR) {
-      const g = ctx.createLinearGradient(-rx, 0, rx, 0);
-      g.addColorStop(0,    `rgba(255,250,190,0)`);
-      g.addColorStop(0.04, `rgba(255,240,160,${peak * 0.40 * flicker})`); // esq: brilhante
-      g.addColorStop(0.14, `rgba(255,255,210,${peak * 0.90 * flicker})`); // esq: pico Doppler
-      g.addColorStop(0.26, `rgba(255,220,110,${peak * 0.75 * flicker})`);
-      g.addColorStop(0.42, `rgba(255,170, 50,${peak * 0.52 * flicker})`);
-      g.addColorStop(0.58, `rgba(255,130, 25,${dimR  * 0.40})`);          // dir: apagado
-      g.addColorStop(0.76, `rgba(220, 75,  5,${dimR  * 0.22})`);
-      g.addColorStop(0.90, `rgba(180, 40,  2,${dimR  * 0.10})`);
-      g.addColorStop(1,    `rgba(140, 20,  0,0)`);
-      return g;
-    }
-
-    ctx.save();
-    ctx.translate(sx, sy);
-    ctx.rotate(da);
-
-    // ── 1. Halo corona externo (achatado como o disco) ──
-    ctx.save();
-    ctx.scale(1, 0.18);
-    const hG = ctx.createRadialGradient(0, 0, shadow * 0.9, 0, 0, diskRx * 1.7);
-    hG.addColorStop(0,    'rgba(255,110,8,0.30)');
-    hG.addColorStop(0.18, 'rgba(255, 85,5,0.13)');
-    hG.addColorStop(0.45, 'rgba(210, 55,2,0.05)');
-    hG.addColorStop(0.75, 'rgba(160, 30,1,0.02)');
-    hG.addColorStop(1,    'transparent');
-    ctx.beginPath(); ctx.arc(0, 0, diskRx * 1.7, 0, Math.PI*2);
-    ctx.fillStyle = hG; ctx.fill();
-    ctx.restore();
-
-    // ── 2. Disco traseiro (metade superior — vai por trás da sombra) ──
-    const backDef = [
-      { rxM:1.00, ryM:1.00, pk:0.30, dm:0.12 },
-      { rxM:0.84, ryM:0.76, pk:0.44, dm:0.18 },
-      { rxM:0.66, ryM:0.56, pk:0.24, dm:0.10 },
-    ];
-    for (const { rxM, ryM, pk, dm } of backDef) {
-      ctx.beginPath();
-      ctx.ellipse(0, 0, diskRx*rxM, diskRy*ryM, 0, Math.PI, Math.PI*2);
-      ctx.fillStyle = dg(diskRx*rxM, pk, dm);
-      ctx.fill();
-    }
-
-    // ── 3. Arco de lente gravitacional (imagem do lado traseiro dobrada acima) ──
-    // Doppler também aqui: esquerdo mais brilhante
-    const arcY  = -shadow * 0.76;
-    const arcRx = diskRx * 0.58;
-    const arcRy = shadow * 0.50;
-    for (let i = 0; i < 9; i++) {
-      const f  = 1 - i * 0.080;
-      const oY = arcY - i * shadow * 0.030;
-      const al = (0.85 - i * 0.082) * flicker;
-      const g  = ctx.createLinearGradient(-arcRx*f, 0, arcRx*f, 0);
-      g.addColorStop(0,    'rgba(255,100,3,0)');
-      g.addColorStop(0.06, `rgba(255,240,155,${al * 1.25})`); // esq Doppler boosted
-      g.addColorStop(0.18, `rgba(255,255,195,${al * 1.40})`); // pico esq
-      g.addColorStop(0.38, `rgba(255,215, 95,${al * 1.00})`);
-      g.addColorStop(0.54, `rgba(255,160, 40,${al * 0.65})`);
-      g.addColorStop(0.72, `rgba(230, 90, 10,${al * 0.35})`); // dir apagado
-      g.addColorStop(0.88, `rgba(180, 45,  3,${al * 0.14})`);
-      g.addColorStop(1,    'rgba(140, 20,  0,0)');
-      ctx.save();
-      ctx.translate(0, oY);
-      ctx.scale(1, (arcRy * f) / (arcRx * f + 0.001));
-      ctx.beginPath();
-      ctx.arc(0, 0, arcRx * f, Math.PI, Math.PI*2);
-      ctx.closePath();
-      ctx.fillStyle = g; ctx.fill();
-      ctx.restore();
-    }
-
-    // ── 4. Sombra / horizonte de eventos ──
-    ctx.beginPath(); ctx.arc(0, 0, shadow, 0, Math.PI*2);
-    ctx.fillStyle = '#000'; ctx.fill();
-
-    // ── 5. Disco frontal (metade inferior — na frente da sombra) ──
-    // Camadas do externo ao interno, ficando cada vez mais quente/branco
-    const frontDef = [
-      { rxM:1.08, ryM:2.20, pk:0.22, dm:0.10 },
-      { rxM:0.94, ryM:1.60, pk:0.42, dm:0.18 },
-      { rxM:0.80, ryM:1.15, pk:0.66, dm:0.28 },
-      { rxM:0.65, ryM:0.80, pk:0.88, dm:0.38 },
-      { rxM:0.50, ryM:0.55, pk:1.05, dm:0.48 },
-    ];
-    for (const { rxM, ryM, pk, dm } of frontDef) {
-      ctx.beginPath();
-      ctx.ellipse(0, 0, diskRx*rxM, diskRy*ryM, 0, 0, Math.PI);
-      ctx.fillStyle = dg(diskRx*rxM, pk, dm);
-      ctx.fill();
-    }
-
-    // Faixa interior ultra-quente (plasma branco-amarelo, encostado na sombra)
-    const hotRx = shadow * 1.10;
-    const hotRy = diskRy * 0.48;
-    const hg    = ctx.createLinearGradient(-hotRx, 0, hotRx, 0);
-    hg.addColorStop(0,    'rgba(255,210,110,0)');
-    hg.addColorStop(0.08, `rgba(255,255,210,${1.05 * flicker})`); // esq máximo
-    hg.addColorStop(0.28, `rgba(255,250,195,${0.92 * flicker})`);
-    hg.addColorStop(0.50, `rgba(255,230,155,${0.75 * flicker})`);
-    hg.addColorStop(0.70, `rgba(255,175, 60,${0.48 * flicker})`); // dir apagado
-    hg.addColorStop(0.88, `rgba(240,110, 15,${0.24})`);
-    hg.addColorStop(1,    'rgba(200, 60,  5,0)');
-    ctx.beginPath();
-    ctx.ellipse(0, 0, hotRx, hotRy, 0, 0, Math.PI);
-    ctx.fillStyle = hg; ctx.fill();
-
-    // ── 6. Anel de fótons — fino, brilhante, Doppler assimétrico ──
-    const pG = ctx.createLinearGradient(-shadow, 0, shadow, 0);
-    pG.addColorStop(0,    `rgba(255,255,200,${0.95 * flicker})`); // esq vivo
-    pG.addColorStop(0.30, `rgba(255,220,120,${0.75 * flicker})`);
-    pG.addColorStop(0.55, `rgba(255,160, 40,${0.50})`);
-    pG.addColorStop(0.75, `rgba(220, 90, 10,${0.32})`);           // dir apagado
-    pG.addColorStop(1,    `rgba(160, 40,  2,${0.15})`);
-    ctx.beginPath(); ctx.arc(0, 0, shadow * 1.016, 0, Math.PI*2);
-    ctx.strokeStyle = pG; ctx.lineWidth = R * 0.046; ctx.stroke();
-
-    // Anel secundário (imagem de ordem 2 — ainda mais fino)
-    const p2G = ctx.createLinearGradient(-shadow, 0, shadow, 0);
-    p2G.addColorStop(0,   `rgba(255,245,180,${0.35 * flicker})`);
-    p2G.addColorStop(0.5, `rgba(255,180, 60,${0.20})`);
-    p2G.addColorStop(1,   `rgba(180, 50,  5,${0.08})`);
-    ctx.beginPath(); ctx.arc(0, 0, shadow * 0.968, 0, Math.PI*2);
-    ctx.strokeStyle = p2G; ctx.lineWidth = R * 0.016; ctx.stroke();
-
-    ctx.restore();
+    ctx.globalCompositeOperation = 'source-over';
   }
 
   // ── LOOP PRINCIPAL ──
@@ -695,7 +690,17 @@
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, W, H);
 
-    // Brasas espalhadas
+    // Estrelas distantes (frias, brancas)
+    for (const s of stars) {
+      s.tw += s.tws * 0.016;
+      const al = s.a * (0.5 + Math.sin(s.tw) * 0.5);
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+      ctx.fillStyle = `rgba(220,225,240,${al})`;
+      ctx.fill();
+    }
+
+    // Brasas quentes espalhadas (com blend aditivo p/ glow)
+    ctx.globalCompositeOperation = 'lighter';
     for (const e of embers) {
       e.x += e.dx; e.y += e.dy;
       if (e.x < -4) e.x = W + 4;
@@ -703,17 +708,18 @@
       if (e.y < -4) e.y = H + 4;
       if (e.y > H+4) e.y = -4;
       e.twinkle += e.twinkleSpd * 0.016;
-      const al = e.brightness * (0.35 + Math.sin(e.twinkle) * 0.28);
-      const eg = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, e.r * 3.5);
-      eg.addColorStop(0,   `hsla(${e.hue},${e.sat}%,75%,${al})`);
-      eg.addColorStop(0.35,`hsla(${e.hue},${e.sat}%,50%,${al * 0.35})`);
+      const al = e.brightness * (0.30 + Math.sin(e.twinkle) * 0.32);
+      const eg = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, e.r * 4);
+      eg.addColorStop(0,   `hsla(${e.hue},${e.sat}%,${e.light}%,${al})`);
+      eg.addColorStop(0.40,`hsla(${e.hue},${e.sat}%,${e.light * 0.55}%,${al * 0.35})`);
       eg.addColorStop(1,   'transparent');
-      ctx.beginPath(); ctx.arc(e.x, e.y, e.r * 3.5, 0, Math.PI*2);
+      ctx.beginPath(); ctx.arc(e.x, e.y, e.r * 4, 0, Math.PI*2);
       ctx.fillStyle = eg; ctx.fill();
       ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, Math.PI*2);
-      ctx.fillStyle = `hsla(${e.hue},${e.sat}%,88%,${al})`;
+      ctx.fillStyle = `hsla(${e.hue},${e.sat * 0.6}%,92%,${al})`;
       ctx.fill();
     }
+    ctx.globalCompositeOperation = 'source-over';
 
     // Buraco negro
     drawBlackHole(now);
@@ -750,6 +756,54 @@
     }
   `;
   document.head.appendChild(style);
+
+  // ── ÁUDIO DE FUNDO ────────────────────────────────────────────
+  (() => {
+    const audio    = document.getElementById('bgAudio');
+    const toggle   = document.getElementById('audioToggle');
+    const iconOn   = document.getElementById('iconOn');
+    const iconOff  = document.getElementById('iconOff');
+    audio.volume   = 0.45;
+
+    function syncIcons() {
+      const playing = !audio.paused && !audio.muted;
+      iconOn.style.display  = playing ? 'block' : 'none';
+      iconOff.style.display = playing ? 'none'  : 'block';
+    }
+
+    // Tentativa 1: autoplay direto
+    audio.play().then(syncIcons).catch(() => {
+      // Tentativa 2: autoplay mudo (sempre permitido) + unmute no primeiro gesto
+      audio.muted = true;
+      audio.play().catch(() => {});
+      syncIcons();
+      const unlock = () => {
+        audio.muted = false;
+        audio.play().then(syncIcons).catch(() => {});
+        ['click','touchstart','keydown','pointerdown'].forEach(ev =>
+          window.removeEventListener(ev, unlock, true)
+        );
+      };
+      ['click','touchstart','keydown','pointerdown'].forEach(ev =>
+        window.addEventListener(ev, unlock, { once: true, capture: true })
+      );
+    });
+
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (audio.paused || audio.muted) {
+        audio.muted = false;
+        audio.play().catch(() => {});
+      } else {
+        audio.muted = true;
+      }
+      syncIcons();
+    });
+
+    audio.addEventListener('play',   syncIcons);
+    audio.addEventListener('pause',  syncIcons);
+    audio.addEventListener('volumechange', syncIcons);
+  })();
 </script>
 </body>
 </html>
